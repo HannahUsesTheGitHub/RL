@@ -1,0 +1,22 @@
+
+Baseline
+    - general implementation of DQN
+    - plot results to compare
+
+
+
+3 experiments
+1. Massive parallel RL (if it doesnt work -> order of poll length) - Hannah
+
+
+2. Hyperparameter tunung with evolutionary algorithms - Akshi
+
+
+3. Something about the buffer - Sanne
+
+
+4. if space+time combine all of them together
+
+
+
+Writing the Report
