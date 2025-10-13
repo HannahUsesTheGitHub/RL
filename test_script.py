@@ -91,7 +91,7 @@ def test_script():
     all_results = []
 
     # import here your trained neural network
-    trained_nn = 'baseline_model2.pth'
+    trained_nn = 'MP_DQN2_v2.pth'
 
     results = {}
     total_score = 0
