@@ -128,16 +128,6 @@ def worker_process(worker_id, policy_weights_queue, experience_queue, stop_flag,
 
     env.close()
 
-#plot results
-def plot_results(avg_rewards):
-    x = [i * 25 for i in range(len(avg_rewards))]
-    plt.plot(x, avg_rewards)
-    plt.xlabel("Episodes")
-    plt.ylabel("Average Reward (last 25 episodes)")
-    plt.title("Parallel DQN")
-    plt.grid()
-    #plt.show()
-
 
 #Main parallel DQN loop
 def MP_DQN(
@@ -147,7 +137,8 @@ def MP_DQN(
     capacity=10000,
     gamma=0.99,
     learning_rate=1e-3,
-    target_update=500
+    target_update=500,
+    decay_interval = 1
 ):
     #initialze policy and target network
     state_dim = 4
@@ -211,8 +202,9 @@ def MP_DQN(
                 policy_weights_queue.put(weights)
 
         #global epsilon decay
-        if global_epsilon.value > 0.01:
-            global_epsilon.value *= 0.9995
+        if step % decay_interval == 0:
+            if global_epsilon.value > 0.01:
+                global_epsilon.value *= 0.9995
 
         #safe average rewards and print them
         if step % 2000 == 0 and step > 0:
@@ -248,6 +240,51 @@ def MP_DQN(
     print("All processes joined successfully.")
     return plot_avg_rewards, policy_net
 
+
+def plot_results2(all_avg_rewards, steps, n_agents, batch_size, capacity, learning_rate, decay, save_dir):
+    """
+    Plot the mean ± std of reward curves from multiple runs of the same configuration.
+
+    Parameters
+    ----------
+    all_avg_rewards : list[list[float]]
+        List of average reward curves (one per run).
+    steps, n_agents, batch_size, capacity, learning_rate, decay : hyperparameters for labeling.
+    save_dir : str
+        Directory to save the plot.
+    """
+    os.makedirs(save_dir, exist_ok=True)
+
+    # pad shorter runs with zeros so we can stack them
+    max_len = max(len(r) for r in all_avg_rewards)
+    rewards_array = np.zeros((len(all_avg_rewards), max_len))
+    for i, r in enumerate(all_avg_rewards):
+        rewards_array[i, :len(r)] = r
+
+    # compute mean and std
+    mean_rewards = rewards_array.mean(axis=0)
+    std_rewards = rewards_array.std(axis=0)
+    x = [i * 2000 for i in range(len(mean_rewards))]
+
+    # create figure
+    fig, ax = plt.subplots()
+    ax.plot(x, mean_rewards, label='Mean Reward', color='b')
+    ax.fill_between(x, mean_rewards - std_rewards, mean_rewards + std_rewards,
+                    color='b', alpha=0.3, label='±1 Std')
+    ax.set_xlabel("Training Steps")
+    ax.set_ylabel("Average Reward")
+    ax.set_title(f"{steps}s {n_agents}a {batch_size}b {capacity}c lr={learning_rate} d={decay}")
+    ax.legend()
+    ax.grid()
+
+    # save
+    plot_path = os.path.join(save_dir, f"mean_std_plot.png")
+    fig.savefig(plot_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+    return mean_rewards, std_rewards
+
+
 # Run 
 if __name__ == "__main__":
     # avg_rewards, network = MP_DQN(
@@ -262,7 +299,6 @@ if __name__ == "__main__":
     # model_path = "weights/MP_DQN_random_pole2.pth"
     # torch.save(network.state_dict(), model_path)
 
-    # plot_results(avg_rewards)
 
     #hyperparameter tuning
     total_steps_list = [20000, 40000, 60000]
@@ -270,36 +306,72 @@ if __name__ == "__main__":
     batch_size_list = [32, 64, 128]
     capacity_list = [5000, 10000, 15000]
     learning_rate_list = [1e-3, 3e-4, 1e-4]
+    decay_intervals = [1, 25, 50]
+
 
     best_rewards = []
     best_networks = []
-    for i in range(10):
-        best_network = None
-        best_reward = 0
-        for steps in total_steps_list:
-            for n_agents in n_agents_list:
-                for batch_size in batch_size_list:
-                    for capacity in capacity_list:
-                        for learning_rate in learning_rate_list:
-                            print()
-                            print(f'TRAINING: {steps}steps_{n_agents}agents_{batch_size}batch_{capacity}cap_{learning_rate}lr')
-                            print()
-                            avg_rewards, network = MP_DQN(steps, n_agents, batch_size, capacity, learning_rate)
 
-                            if avg_rewards[-1] > best_reward:
-                                best_reward = avg_rewards[-1]
-                                best_network = f'weights/tuning/{i}/DQN_{steps}steps_{n_agents}agents_{batch_size}batch_{capacity}cap_{learning_rate}lr.pth'
+    for steps in total_steps_list:
+        for n_agents in n_agents_list:
+            for batch_size in batch_size_list:
+                for capacity in capacity_list:
+                    for learning_rate in learning_rate_list:
+                        for decay in decay_intervals:
 
-                            os.makedirs(f"weights/tuning/{i}", exist_ok=True)
-                            model_path = f"weights/tuning/{i}/DQN_{steps}steps_{n_agents}agents_{batch_size}batch_{capacity}cap_{learning_rate}lr.pth"
-                            torch.save(network.state_dict(), model_path)
-                            plot_results(avg_rewards)
-                            fig = plt.gcf()
-                            fig.savefig(f"weights/tuning/{i}/DQN_{steps}steps_{n_agents}agents_{batch_size}batch_{capacity}cap_{learning_rate}lr.png", dpi=300, bbox_inches='tight')
-        
-        print(f'The best network ended with a reward of {best_reward} and the path {best_network}')
-        best_networks.append(best_network)
-        best_rewards.append(best_reward)
-    
-    for reward, network in zip(best_networks, best_rewards):
-        print(reward, network)
+                            print()
+                            print(f'TRAINING CONFIG: {steps}steps_{n_agents}agents_{batch_size}batch_{capacity}cap_{learning_rate}lr_{decay}decay')
+                            print()
+
+                            # store all results for this hyperparameter combination
+                            all_avg_rewards = []
+                            best_reward = -float('inf')
+                            best_network = None
+
+                            # run each configuration 10 times
+                            for i in range(10):
+                                print(f'  Run {i+1}/10...')
+
+                                avg_rewards, network = MP_DQN(
+                                    total_steps=steps,
+                                    n_agents=n_agents,
+                                    batch_size=batch_size,
+                                    capacity=capacity,
+                                    learning_rate=learning_rate,
+                                    decay_interval=decay
+                                )
+
+                                # create directory for this config
+                                config_dir = f"weights/tuning/{steps}steps_{n_agents}agents_{batch_size}batch_{capacity}cap_{learning_rate}lr_{decay}decay"
+                                os.makedirs(config_dir, exist_ok=True)
+
+                                # save model for this run
+                                model_path = f"{config_dir}/run_{i}.pth"
+                                torch.save(network.state_dict(), model_path)
+
+                                all_avg_rewards.append(avg_rewards)
+
+                                # track best individual run in this config
+                                if avg_rewards[-1] > best_reward:
+                                    best_reward = avg_rewards[-1]
+                                    best_network = model_path
+
+                            # compute and save mean ± std plot for this configuration
+                            mean_rewards, std_rewards = plot_results2(
+                                all_avg_rewards,
+                                steps, n_agents, batch_size, capacity,
+                                learning_rate, decay,
+                                save_dir=config_dir
+                            )
+
+                            print(f'Config finished. Mean final reward: {mean_rewards[-1]:.2f}')
+                            print(f'Best single run reward: {best_reward:.2f}')
+
+                            best_rewards.append(best_reward)
+                            best_networks.append(best_network)
+
+    print()
+    print("=== HYPERPARAMETER TUNING FINISHED ===")
+    for reward, network in zip(best_rewards, best_networks):
+        print(f"Reward: {reward:.2f} | Model: {network}")
+
