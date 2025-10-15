@@ -302,7 +302,7 @@ if __name__ == "__main__":
 
     #hyperparameter tuning
     total_steps_list = [20000, 40000]
-    n_agents_list = [4, 8, 12]
+    n_agents_list = [4, 8]
     batch_size_list = [32, 64]
     capacity_list = [10000, 15000]
     learning_rate_list = [3e-4, 1e-4]
