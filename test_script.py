@@ -91,7 +91,7 @@ def test_script():
     all_results = []
 
     # import here your trained neural network
-    trained_nn = 'backup_model_3500.pth'
+    trained_nn = 'PER_usage_model1.pth'
 
     results = {}
     total_score = 0
@@ -131,7 +131,7 @@ def test_script():
 
     # Convert list to DataFrame
     df = pd.DataFrame(all_results)
-    df.to_excel("experiment_results_eamodel.xlsx", index=False)
+    df.to_excel("experiment_results_perusagemodel3.xlsx", index=False)
 
 if __name__ == "__main__":
     test_script()
