@@ -91,7 +91,9 @@ def test_script():
     all_results = []
 
     # import here your trained neural network
-    trained_nn = 'tuning2/40000steps_4agents_32batch_15000cap_0.0003lr/run_2.pth'
+    #trained_nn = 'tuning2/40000steps_4agents_32batch_15000cap_0.0003lr/run_2.pth'
+    #trained_nn = 'tuning2/40000steps_8agents_64batch_10000cap_0.0003lr/run_0.pth'
+    trained_nn = 'tuning2/40000steps_4agents_32batch_10000cap_0.0003lr/run_9.pth'
 
     results = {}
     total_score = 0
@@ -131,7 +133,7 @@ def test_script():
 
     # Convert list to DataFrame
     df = pd.DataFrame(all_results)
-    df.to_excel("parallel_DQN_results.xlsx", index=False)
+    df.to_excel("parallel_DQN_results_v3_4.xlsx", index=False)
 
 if __name__ == "__main__":
     test_script()
