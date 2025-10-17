@@ -287,19 +287,6 @@ def plot_results2(all_avg_rewards, steps, n_agents, batch_size, capacity, learni
 
 # Run 
 if __name__ == "__main__":
-    # avg_rewards, network = MP_DQN(
-    #     total_steps=20000,
-    #     n_agents=4,
-    #     batch_size=64,
-    #     capacity=10000,
-    #     learning_rate=1e-3
-    # )
-
-    # os.makedirs("weights", exist_ok=True)
-    # model_path = "weights/MP_DQN_random_pole2.pth"
-    # torch.save(network.state_dict(), model_path)
-
-
     #hyperparameter tuning
     total_steps_list = [20000, 40000]
     n_agents_list = [4, 8]
