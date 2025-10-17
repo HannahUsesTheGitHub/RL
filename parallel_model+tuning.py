@@ -82,6 +82,19 @@ class RandomPoleCartPole(CartPoleEnv):
 
 #loop for an intividual agent
 def worker_process(worker_id, policy_weights_queue, experience_queue, stop_flag, global_epsilon, episode_rewards):
+    '''
+    Functionality of the separate agents.
+
+    params:
+    worker_id : int : id of the worker (not used)
+    policy_weights_queue: queue to get the weights of the gobal policy 
+    experience_queue: queue to store the experiences so they can be pushed to the buffer 
+    stop_flag: bool that is true when the algorithms terminates 
+    global_epsilon: global epsilon value 
+    episode_rewards: rewards of the episode
+
+    return: none
+    '''
     env = RandomPoleCartPole(min_length=0.4, max_length=1.8, randomize_each_episode=True) #create environment (new pole length each episode)
     local_net = QNetwork(4, 2) #local version of the policy network
     obs, _ = env.reset()
@@ -89,9 +102,10 @@ def worker_process(worker_id, policy_weights_queue, experience_queue, stop_flag,
     step_count = 0 #count the steps per episode
 
     while not stop_flag.value:
+
+        #synchronize the wights of the local policy with the global policy
         try:
             while True:
-                #synchronize the weights with the other local policies (if possible)
                 weights = policy_weights_queue.get_nowait() 
                 local_net.load_state_dict(weights)
         except Exception:
@@ -106,11 +120,11 @@ def worker_process(worker_id, policy_weights_queue, experience_queue, stop_flag,
                 q_vals = local_net(torch.tensor(obs, dtype=torch.float32).unsqueeze(0))
                 action = int(torch.argmax(q_vals))
 
-        #execute action, get new obsercation, reward etc.
+        #execute action, get new observation, reward etc.
         next_obs, reward, terminated, truncated, _ = env.step(action)
         done = terminated or truncated
         try:
-            experience_queue.put_nowait((obs, action, next_obs, reward, done)) #put experience in queue/buffer if possible
+            experience_queue.put_nowait((obs, action, next_obs, reward, done)) #put experience in queue for the buffer if possible
         except Exception:
             pass 
 
@@ -140,6 +154,18 @@ def MP_DQN(
     target_update=500,
     decay_interval = 1
 ):
+    '''
+    Main code for the parallel DQN algorithm. 
+    params:
+    total_steps: int : total number of global steps the algorithm takes (each step the policy is updated)
+    n_agents: int : number of agents
+    batch_size: int : size of the sambpled batch
+    capacity: int : capacity for the replay buffer
+    gamma: float : discount factor
+    learning_rate: float : learning rate
+    target_update: int : interval for updating the target network
+    decay_interval: int : interval for decaying epsilon (if higher then epsilon decays more slowly)
+    '''
     #initialze policy and target network
     state_dim = 4
     action_dim = 2
@@ -148,7 +174,7 @@ def MP_DQN(
     target_net.load_state_dict(policy_net.state_dict())
 
     optimizer = optim.Adam(policy_net.parameters(), lr=learning_rate)
-    buffer = ReplayBuffer(capacity)
+    buffer = ReplayBuffer(capacity) # initialize buffer
 
     #set up manager and values for parallel processing
     mp.set_start_method("spawn", force=True)
@@ -168,19 +194,20 @@ def MP_DQN(
         p.start()
         processes.append(p)
 
+    #initialize counters and lists
     step = 0
     plot_avg_rewards = []
     last_sync = 0
     last_printed_count = 0
 
     while step < total_steps:
-        #in the experience queue is not empty, add those experiences to the buffer
+        #in the experience queue is not empty (the separate agents put experiences in the queue), add those experiences to the buffer
         if not experience_queue.empty():
             obs, act, next_obs, rew, done = experience_queue.get()
             buffer.push(obs, act, next_obs, rew, done)
             step += 1
 
-        #if the buffer is full enough, sample from it and then train the policy network
+        #if the buffer is full enough, sample from it and then update the policy network
         if len(buffer) >= batch_size:
             obs, actions, rewards, next_obs, dones = buffer.sample(batch_size)
             with torch.no_grad():
@@ -199,19 +226,15 @@ def MP_DQN(
             last_sync = step
             weights = policy_net.state_dict()
             for _ in range(n_agents):
-                policy_weights_queue.put(weights)
+                policy_weights_queue.put(weights) # add policy weights in the queue so the agents can synchronize with it
 
         #global epsilon decay
         if step % decay_interval == 0:
             if global_epsilon.value > 0.01:
                 global_epsilon.value *= 0.9995
 
-        #safe average rewards and print them
+        #save average rewards
         if step % 2000 == 0 and step > 0:
-            # last_25 = list(episode_rewards)[-25:] # something wrong here
-            # avg_reward = np.mean(last_25) if last_25 else 0
-            # plot_avg_rewards.append(avg_reward)
-            # print(f"Step {step}/{total_steps}, Avg Reward: {avg_reward:.2f}, Epsilon: {global_epsilon.value:.3f}")
             current_rewards = list(episode_rewards)
             if len(current_rewards) > last_printed_count:
                 new_rewards = current_rewards[last_printed_count:]
@@ -245,13 +268,10 @@ def plot_results2(all_avg_rewards, steps, n_agents, batch_size, capacity, learni
     """
     Plot the mean ± std of reward curves from multiple runs of the same configuration.
 
-    Parameters
-    ----------
-    all_avg_rewards : list[list[float]]
-        List of average reward curves (one per run).
+    params
+    all_avg_rewards : list[list[float]] : list with all reward averages (one per run)
     steps, n_agents, batch_size, capacity, learning_rate, decay : hyperparameters for labeling.
-    save_dir : str
-        Directory to save the plot.
+    save_dir : str : Directory to save the plot.
     """
     os.makedirs(save_dir, exist_ok=True)
 
